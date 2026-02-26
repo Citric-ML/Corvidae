@@ -1,3 +1,29 @@
+let connectionMode = null; // stores idea id currently waiting to connect
+let ideaCounter = 0; // unique ids
+
+/*---------------------------
+Helpers come first, as always
+*/
+function getIdeas() {
+    const items = document.querySelectorAll(".idea-item");
+
+    const ideas = [];
+
+    items.forEach(item => {
+        const name = item.querySelector(".idea-name").value.trim();
+        const group = item.querySelector(".group-input").value.trim();
+
+        if (name) {
+            ideas.push({
+                name,
+                group: group || "no group"
+            });
+        }
+    });
+
+    return ideas;
+}
+//---------------------------
 const API_URL = "https://en.wikipedia.org/w/api.php";
 /*
 Fetches the article
@@ -364,6 +390,214 @@ function renderSection(sectionData) {
     return container;
 }
 
+
+/*
+Main idea listing section
+how connections work:
+client clicks "connect" button
+client clicks another "connect" button
+the two idea objects are listed in eachothers connection list
+if one is removed both are, completely symmetrical system
+*/
+function addIdea(value = "", group = "no group") {
+    const ideaList = document.getElementById("ideaList");
+
+    const id = ideaCounter++;
+
+    const wrapper = document.createElement("div");
+    wrapper.classList.add("idea-item");
+    wrapper.dataset.id = id;
+
+    wrapper.connections = new Set();
+
+    // IDEA NAME
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = value;
+    input.placeholder = "Enter main idea...";
+    input.classList.add("idea-name");
+
+    // GROUP
+    const groupLabel = document.createElement("div");
+    groupLabel.textContent = "Group:";
+    groupLabel.classList.add("group-label");
+
+    const groupInput = document.createElement("input");
+    groupInput.type = "text";
+    groupInput.value = group;
+    groupInput.classList.add("group-input");
+
+    groupInput.addEventListener("blur", () => {
+        if (!groupInput.value.trim()) {
+            groupInput.value = "no group";
+        }
+    });
+
+    // CONNECT BUTTON
+    const connectBtn = document.createElement("button");
+    connectBtn.textContent = "Connect";
+    connectBtn.classList.add("connect-btn");
+
+    connectBtn.addEventListener("click", () => handleConnection(wrapper));
+
+    // COLLAPSIBLE CONNECTIONS
+    const toggleConnections = document.createElement("div");
+    toggleConnections.textContent = "Connections ▼";
+    toggleConnections.classList.add("connections-toggle");
+
+    const connectionList = document.createElement("div");
+    connectionList.classList.add("connection-list");
+    connectionList.style.display = "none";
+
+    toggleConnections.addEventListener("click", () => {
+        connectionList.style.display =
+            connectionList.style.display === "none" ? "block" : "none";
+    });
+
+    wrapper.appendChild(input);
+    wrapper.appendChild(groupLabel);
+    wrapper.appendChild(groupInput);
+    wrapper.appendChild(connectBtn);
+    wrapper.appendChild(toggleConnections);
+    wrapper.appendChild(connectionList);
+
+    ideaList.appendChild(wrapper);
+}
+
+document.getElementById("addIdeaBtn").addEventListener("click", () => {
+    addIdea();
+});
+function handleConnection(currentIdea) {
+    const currentId = currentIdea.dataset.id;
+
+    // If no idea selected yet → enter connection mode
+    if (connectionMode === null) {
+        connectionMode = currentId;
+        currentIdea.classList.add("connecting");
+        return;
+    }
+
+    // If clicking same idea → cancel
+    if (connectionMode === currentId) {
+        connectionMode = null;
+        currentIdea.classList.remove("connecting");
+        return;
+    }
+
+    const firstIdea = document.querySelector(
+        `.idea-item[data-id="${connectionMode}"]`
+    );
+
+    createConnection(firstIdea, currentIdea);
+
+    firstIdea.classList.remove("connecting");
+    connectionMode = null;
+}
+//create/remove connections
+function createConnection(ideaA, ideaB) {
+    const idA = ideaA.dataset.id;
+    const idB = ideaB.dataset.id;
+
+    if (ideaA.connections.has(idB)) return;
+
+    ideaA.connections.add(idB);
+    ideaB.connections.add(idA);
+
+    renderConnections(ideaA);
+    renderConnections(ideaB);
+}
+
+function removeConnection(ideaA, ideaB) {
+    ideaA.connections.delete(ideaB.dataset.id);
+    ideaB.connections.delete(ideaA.dataset.id);
+
+    renderConnections(ideaA);
+    renderConnections(ideaB);
+}
+function renderConnections(idea) {
+    const list = idea.querySelector(".connection-list");
+    list.innerHTML = "";
+
+    idea.connections.forEach(id => {
+        const target = document.querySelector(
+            `.idea-item[data-id="${id}"]`
+        );
+
+        const targetName =
+            target.querySelector(".idea-name").value || "Unnamed";
+
+        const item = document.createElement("div");
+        item.classList.add("connection-item");
+
+        const label = document.createElement("span");
+        label.textContent = targetName;
+
+        const remove = document.createElement("span");
+        remove.textContent = " ✕";
+        remove.classList.add("remove-connection");
+
+        remove.addEventListener("click", () => {
+            removeConnection(idea, target);
+        });
+
+        item.appendChild(label);
+        item.appendChild(remove);
+
+        list.appendChild(item);
+    });
+}
+
+/*
+Suggestions (keep adding onto STOPWORDS as you test Corvidae)
+*/
+//words that won't be factored in for suggestions
+const STOPWORDS = new Set([
+    "the","and","of","to","in","a","is","that","for","on","with",
+    "as","by","at","from","an","be","this","which","or","it",
+    "are","was","were","has","had","have","but","not","their",
+    "its","they","them","he","she","his","her","also", "less",
+    "more", "north", "south", "east", "west", "along", "there",
+    "into", "around"
+]);
+//getting most used words in text
+function extractKeywordSuggestions(data) {
+    const wordCounts = {};
+
+    data.sections.forEach(section => {
+        const text = section.paragraph.toLowerCase();
+
+        const words = text.match(/\b[a-z]{4,}\b/g); // 4+ letter words only
+        if (!words) return;
+
+        words.forEach(word => {
+            if (!STOPWORDS.has(word)) {
+                wordCounts[word] = (wordCounts[word] || 0) + 1;
+            }
+        });
+    });
+
+    return Object.entries(wordCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(entry => entry[0]);
+}
+function renderSuggestions(keywords) {
+    const container = document.getElementById("suggestions");
+    container.innerHTML = "";
+
+    keywords.forEach(word => {
+        const chip = document.createElement("div");
+        chip.classList.add("suggestion-chip");
+        chip.textContent = word;
+
+        chip.addEventListener("click", () => {
+            addIdea(word);
+        });
+
+        container.appendChild(chip);
+    });
+}
+
 function renderPage(data) {
     const output = document.getElementById("output");
     output.innerHTML = "";
@@ -372,6 +606,8 @@ function renderPage(data) {
         const sectionDiv = renderSection(section);
         output.appendChild(sectionDiv);
     });
+    const keywords = extractKeywordSuggestions(data);
+    renderSuggestions(keywords);
 }
 /*
 Final search handler
