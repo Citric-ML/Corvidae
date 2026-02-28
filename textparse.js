@@ -14,7 +14,8 @@ const STOPWORDS = new Set([
     "are","was","were","has","had","have","but","not","their",
     "its","they","them","he","she","his","her","also", "less",
     "more", "north", "south", "east", "west", "along", "there",
-    "into", "around", "first", "last", "bottom", "top"
+    "into", "around", "first", "last", "bottom", "top", "largest",
+    "smallest"
 ]);
 
 /*---------------------------
@@ -38,6 +39,31 @@ function getIdeas() {
     });
 
     return ideas;
+}
+
+function createConnectionItem(text, index) {
+
+    const item = document.createElement("div");
+    item.classList.add("connection-item");
+
+    const label = document.createElement("span");
+    label.textContent = text;
+
+    const remove = document.createElement("span");
+    remove.textContent = "[X]";
+    remove.style.cursor = "pointer";
+    remove.style.marginLeft = "6px";
+
+    remove.addEventListener("click", () => {
+        connections.splice(index, 1);
+        renderConnections();
+        renderConnectionSummary();
+    });
+
+    item.appendChild(label);
+    item.appendChild(remove);
+
+    return item;
 }
 //---------------------------
 const API_URL = "https://en.wikipedia.org/w/api.php";
@@ -206,6 +232,9 @@ function removeTemplates(text) {
 }
 
 function removeTemplateResidue(text) {
+    //Remove comments
+    text = text.replace(/<!--[\s\S]*?-->/g, "");
+
     // Remove convert remnants
     text = text.replace(/\b[Cc]onvert\|[^ ]+/g, "");
 
@@ -250,6 +279,8 @@ function splitSections(text) {
     return sections;
 }
 
+
+
 /* Extract first meaningful paragraph */
 function extractFirstParagraph(sectionText) {
     const lines = sectionText.split("\n");
@@ -271,7 +302,8 @@ function extractFirstParagraph(sectionText) {
             trimmed.startsWith("{") ||
             trimmed.startsWith("=") ||
             trimmed.startsWith("[[File:") ||
-            trimmed.startsWith("[[Image:")
+            trimmed.startsWith("[[Image:") ||
+            trimmed.startsWith("<!--")
         ) {
             continue;
         }
@@ -282,7 +314,7 @@ function extractFirstParagraph(sectionText) {
     return paragraph.join(" ").trim();
 }
 
-/* Clean wiki markup */
+// Clean wiki markup 
 function cleanMarkup(text) {
     if (!text) return "";
 
@@ -402,6 +434,50 @@ function renderSection(sectionData) {
             container.appendChild(figure);
         });
     }
+    // Render infobox (only if present)
+    if (sectionData.infobox) {
+
+        const infobox = document.createElement("div");
+        infobox.classList.add("infobox");
+
+        Object.entries(sectionData.infobox).forEach(([key, value]) => {
+            if (!value) return;
+
+            const row = document.createElement("div");
+            row.classList.add("infobox-row");
+
+            const label = document.createElement("strong");
+            label.textContent = key + ": ";
+
+            const content = document.createElement("span");
+            content.textContent = cleanMarkup(value);
+
+            row.appendChild(label);
+            row.appendChild(content);
+            infobox.appendChild(row);
+        });
+
+        container.appendChild(infobox);
+    }
+    //render lists (if present)
+    if (sectionData.lists && sectionData.lists.length > 0) {
+
+        sectionData.lists.forEach(listData => {
+
+            const listElement = document.createElement(
+                listData.type === "ol" ? "ol" : "ul"
+            );
+
+            listData.items.forEach(itemText => {
+                const li = document.createElement("li");
+                li.textContent = cleanMarkup(itemText);
+                listElement.appendChild(li);
+            });
+
+            container.appendChild(listElement);
+
+        });
+    }
 
     return container;
 }
@@ -445,6 +521,7 @@ document.getElementById("saveConnectionBtn")
     closeModal();
     exitConnectMode();
     renderConnections();
+    renderConnectionSummary();
 
 });
 
@@ -499,60 +576,56 @@ function exitConnectMode() {
         btn.classList.remove("gray");
     });
 }
-//create/remove connections
-function createConnection(ideaA, ideaB) {
-    const idA = ideaA.dataset.id;
-    const idB = ideaB.dataset.id;
 
-    if (ideaA.connections.has(idB)) return;
+function renderConnections() {
 
-    ideaA.connections.add(idB);
-    ideaB.connections.add(idA);
+    document.querySelectorAll(".idea-item").forEach(wrapper => {
 
-    renderConnections(ideaA);
-    renderConnections(ideaB);
-}
+        const list = wrapper.querySelector(".connection-list");
+        list.innerHTML = "";
 
-function removeConnection(ideaA, ideaB) {
-    ideaA.connections.delete(ideaB.dataset.id);
-    ideaB.connections.delete(ideaA.dataset.id);
+        const ideaName = wrapper.dataset.ideaName;
+        if (!ideaName) return;
 
-    renderConnections(ideaA);
-    renderConnections(ideaB);
-}
-function renderConnections(idea) {
-    const list = idea.querySelector(".connection-list");
-    list.innerHTML = "";
+        connections.forEach((conn, index) => {
 
-    idea.connections.forEach(id => {
-        const target = document.querySelector(
-            `.idea-item[data-id="${id}"]`
-        );
+            // OUTGOING
+            if (conn.from === ideaName) {
 
-        const targetName =
-            target.querySelector(".idea-name").value || "Unnamed";
+                const item = createConnectionItem(
+                    `${conn.label} ${conn.to}`,
+                    index
+                );
 
-        const item = document.createElement("div");
-        item.classList.add("connection-item");
+                list.appendChild(item);
+            }
 
-        const label = document.createElement("span");
-        label.textContent = targetName;
+            // INCOMING
+            if (conn.to === ideaName) {
 
-        const remove = document.createElement("span");
-        remove.textContent = " ✕";
-        remove.classList.add("remove-connection");
+                const item = createConnectionItem(
+                    `${conn.from} ${conn.label}`,
+                    index
+                );
 
-        remove.addEventListener("click", () => {
-            removeConnection(idea, target);
+                list.appendChild(item);
+            }
+
+            // BIDIRECTIONAL mirror
+            if (conn.bidirectional && conn.from === ideaName) {
+
+                const item = createConnectionItem(
+                    `${conn.to} ${conn.label}`,
+                    index
+                );
+
+                list.appendChild(item);
+            }
+
         });
 
-        item.appendChild(label);
-        item.appendChild(remove);
-
-        list.appendChild(item);
     });
 }
-
 
 /*
 Suggestions
@@ -599,7 +672,74 @@ function renderSuggestions(keywords) {
 /*
 Visualizes topic map user creates
 */
+function renderConnectionSummary() {
 
+    const container = document.getElementById("connectionsContainer");
+    container.innerHTML = "";
+
+    if (connections.length === 0) {
+        container.textContent = "No connections yet.";
+        return;
+    }
+
+    // Group connections by idea
+    const grouped = {};
+
+    connections.forEach(conn => {
+
+        if (!grouped[conn.from]) {
+            grouped[conn.from] = [];
+        }
+
+        grouped[conn.from].push(conn);
+
+        // If bidirectional, also group under "to"
+        if (conn.bidirectional) {
+            if (!grouped[conn.to]) {
+                grouped[conn.to] = [];
+            }
+
+            grouped[conn.to].push({
+                from: conn.to,
+                to: conn.from,
+                label: conn.label,
+                bidirectional: true
+            });
+        }
+
+    });
+
+    // Render grouped connections
+    Object.keys(grouped).forEach(idea => {
+
+        const groupDiv = document.createElement("div");
+        groupDiv.classList.add("connection-group");
+
+        const title = document.createElement("div");
+        title.classList.add("connection-group-title");
+        title.textContent = idea;
+
+        groupDiv.appendChild(title);
+
+        grouped[idea].forEach(conn => {
+
+            const line = document.createElement("div");
+            line.classList.add("connection-line");
+
+            if (conn.from === idea) {
+                line.textContent = `${conn.from} ${conn.label} ${conn.to}`;
+            } else {
+                line.textContent = `${conn.to} ${conn.label} ${conn.from}`;
+            }
+
+            groupDiv.appendChild(line);
+        });
+
+        container.appendChild(groupDiv);
+
+    });
+
+}
 const colors = [
     "#FFB3BA",
     "#FFDFBA",
@@ -762,6 +902,7 @@ function addIdea(value = "", group = "no group") {
 document.getElementById("addIdeaBtn").addEventListener("click", () => {
     addIdea();
     renderGraph();
+    renderConnectionSummary();
 });
 /*
 Glue code
@@ -777,6 +918,7 @@ function renderPage(data) {
     const keywords = extractKeywordSuggestions(data);
     renderSuggestions(keywords);
     renderGraph()
+    renderConnectionSummary()
 }
 /*
 Final search handler
