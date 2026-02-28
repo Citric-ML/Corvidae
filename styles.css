@@ -152,3 +152,44 @@ body {
     border-color: gray;
     color: #aaa;
 }
+
+#connectionsContainer {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    border: 2px solid #ddd;
+    margin-top: 20px;
+}
+
+.connection-group {
+    margin-bottom: 20px;
+    padding: 10px;
+    border-left: 4px solid #333;
+}
+
+.connection-group-title {
+    font-weight: bold;
+    margin-bottom: 6px;
+}
+
+.connection-line {
+    margin-left: 10px;
+    font-size: 14px;
+}
+
+.infobox {
+    background: #f8f9fa;
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.infobox-row {
+    margin-bottom: 6px;
+}
+
+.infobox-row strong {
+    text-transform: capitalize;
+}
