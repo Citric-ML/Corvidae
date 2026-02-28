@@ -22,6 +22,30 @@
         <h3>Suggested Topics</h3>
         <div id="suggestions"></div>
     </div>
+
+    <h2>Graph View</h2>
+    <div id="graphContainer"></div>
+    <div id="connectionModal" class="modal-overlay">
+    <!--Modal-->
+    <div class="modal">
+        <h3 id="modalTitle"></h3>
+
+        <div class="direction-options">
+        <label>
+            <input type="radio" name="direction" value="forward" checked>
+            X influences Y
+        </label>
+        <label>
+            <input type="radio" name="direction" value="bidirectional">
+            Bidirectional
+        </label>
+        </div>
+
+        <input id="relationshipInput" type="text" placeholder="Describe the relationship..." />
+
+        <button id="saveConnectionBtn">Save</button>
+    </div>
+    </div>
     <script src="textparse.js"></script>
 </body>
 </html>
