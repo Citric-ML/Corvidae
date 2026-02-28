@@ -1,5 +1,21 @@
 let connectionMode = null; // stores idea id currently waiting to connect
 let ideaCounter = 0; // unique ids
+let connections = []; // list of connections
+let pendingSource = null; //
+let connectModeActive = false; //edits styling to signify connect mode
+
+/*
+keep adding onto STOPWORDS as you test Corvidaes
+*/
+//words that won't be factored in for suggestions
+const STOPWORDS = new Set([
+    "the","and","of","to","in","a","is","that","for","on","with",
+    "as","by","at","from","an","be","this","which","or","it",
+    "are","was","were","has","had","have","but","not","their",
+    "its","they","them","he","she","his","her","also", "less",
+    "more", "north", "south", "east", "west", "along", "there",
+    "into", "around", "first", "last", "bottom", "top"
+]);
 
 /*---------------------------
 Helpers come first, as always
@@ -11,7 +27,7 @@ function getIdeas() {
 
     items.forEach(item => {
         const name = item.querySelector(".idea-name").value.trim();
-        const group = item.querySelector(".group-input").value.trim();
+        const group = item.getCommittedGroup ? item.getCommittedGroup(): "no group";
 
         if (name) {
             ideas.push({
@@ -390,6 +406,51 @@ function renderSection(sectionData) {
     return container;
 }
 
+/*
+Modal Logic
+*/
+let modalSource = null;
+let modalTarget = null;
+
+function openConnectionModal(sourceName, targetName) {
+    modalSource = sourceName;
+    modalTarget = targetName;
+
+    const modal = document.getElementById("connectionModal");
+    const title = document.getElementById("modalTitle");
+
+    title.textContent = `How does "${sourceName}" influence "${targetName}"?`;
+
+    document.querySelector('input[value="forward"]').checked = true;
+    document.getElementById("relationshipInput").value = "";
+
+    modal.style.display = "flex";
+}
+
+document.getElementById("saveConnectionBtn")
+.addEventListener("click", () => {
+
+    const direction = document.querySelector('input[name="direction"]:checked').value;
+    const label = document.getElementById("relationshipInput").value.trim();
+
+    if (!label) return;
+
+    connections.push({
+        from: modalSource,
+        to: modalTarget,
+        label: label,
+        bidirectional: direction === "bidirectional"
+    });
+
+    closeModal();
+    exitConnectMode();
+    renderConnections();
+
+});
+
+function closeModal() {
+    document.getElementById("connectionModal").style.display = "none";
+}
 
 /*
 Main idea listing section
@@ -399,99 +460,44 @@ client clicks another "connect" button
 the two idea objects are listed in eachothers connection list
 if one is removed both are, completely symmetrical system
 */
-function addIdea(value = "", group = "no group") {
-    const ideaList = document.getElementById("ideaList");
+function handleConnectClick(wrapper) {
+    const ideaName = wrapper.dataset.ideaName;
+    if (!ideaName) return;
 
-    const id = ideaCounter++;
+    // Clicking same button cancels mode
+    if (pendingSource === wrapper) {
+        exitConnectMode();
+        return;
+    }
 
-    const wrapper = document.createElement("div");
-    wrapper.classList.add("idea-item");
-    wrapper.dataset.id = id;
+    if (!connectModeActive) {
+        enterConnectMode(wrapper);
+    } else {
+        const targetName = ideaName;
+        const sourceName = pendingSource.dataset.ideaName;
 
-    wrapper.connections = new Set();
-
-    // IDEA NAME
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = value;
-    input.placeholder = "Enter main idea...";
-    input.classList.add("idea-name");
-
-    // GROUP
-    const groupLabel = document.createElement("div");
-    groupLabel.textContent = "Group:";
-    groupLabel.classList.add("group-label");
-
-    const groupInput = document.createElement("input");
-    groupInput.type = "text";
-    groupInput.value = group;
-    groupInput.classList.add("group-input");
-
-    groupInput.addEventListener("blur", () => {
-        if (!groupInput.value.trim()) {
-            groupInput.value = "no group";
-        }
-    });
-
-    // CONNECT BUTTON
-    const connectBtn = document.createElement("button");
-    connectBtn.textContent = "Connect";
-    connectBtn.classList.add("connect-btn");
-
-    connectBtn.addEventListener("click", () => handleConnection(wrapper));
-
-    // COLLAPSIBLE CONNECTIONS
-    const toggleConnections = document.createElement("div");
-    toggleConnections.textContent = "Connections ▼";
-    toggleConnections.classList.add("connections-toggle");
-
-    const connectionList = document.createElement("div");
-    connectionList.classList.add("connection-list");
-    connectionList.style.display = "none";
-
-    toggleConnections.addEventListener("click", () => {
-        connectionList.style.display =
-            connectionList.style.display === "none" ? "block" : "none";
-    });
-
-    wrapper.appendChild(input);
-    wrapper.appendChild(groupLabel);
-    wrapper.appendChild(groupInput);
-    wrapper.appendChild(connectBtn);
-    wrapper.appendChild(toggleConnections);
-    wrapper.appendChild(connectionList);
-
-    ideaList.appendChild(wrapper);
+        openConnectionModal(sourceName, targetName);
+    }
 }
 
-document.getElementById("addIdeaBtn").addEventListener("click", () => {
-    addIdea();
-});
-function handleConnection(currentIdea) {
-    const currentId = currentIdea.dataset.id;
+function enterConnectMode(wrapper) {
+    pendingSource = wrapper;
+    connectModeActive = true;
 
-    // If no idea selected yet → enter connection mode
-    if (connectionMode === null) {
-        connectionMode = currentId;
-        currentIdea.classList.add("connecting");
-        return;
-    }
+    document.querySelectorAll(".connect-btn").forEach(btn => {
+        if (btn.parentElement !== wrapper) {
+            btn.classList.add("gray");
+        }
+    });
+}
 
-    // If clicking same idea → cancel
-    if (connectionMode === currentId) {
-        connectionMode = null;
-        currentIdea.classList.remove("connecting");
-        return;
-    }
+function exitConnectMode() {
+    pendingSource = null;
+    connectModeActive = false;
 
-    const firstIdea = document.querySelector(
-        `.idea-item[data-id="${connectionMode}"]`
-    );
-
-    createConnection(firstIdea, currentIdea);
-
-    firstIdea.classList.remove("connecting");
-    connectionMode = null;
+    document.querySelectorAll(".connect-btn").forEach(btn => {
+        btn.classList.remove("gray");
+    });
 }
 //create/remove connections
 function createConnection(ideaA, ideaB) {
@@ -547,18 +553,11 @@ function renderConnections(idea) {
     });
 }
 
+
 /*
-Suggestions (keep adding onto STOPWORDS as you test Corvidae)
+Suggestions
 */
-//words that won't be factored in for suggestions
-const STOPWORDS = new Set([
-    "the","and","of","to","in","a","is","that","for","on","with",
-    "as","by","at","from","an","be","this","which","or","it",
-    "are","was","were","has","had","have","but","not","their",
-    "its","they","them","he","she","his","her","also", "less",
-    "more", "north", "south", "east", "west", "along", "there",
-    "into", "around"
-]);
+
 //getting most used words in text
 function extractKeywordSuggestions(data) {
     const wordCounts = {};
@@ -597,7 +596,176 @@ function renderSuggestions(keywords) {
         container.appendChild(chip);
     });
 }
+/*
+Visualizes topic map user creates
+*/
 
+const colors = [
+    "#FFB3BA",
+    "#FFDFBA",
+    "#BAFFC9",
+    "#C7ECFF",
+    "#C3B1E1"
+
+];
+
+const groupColors = {};
+
+function getGroupColor(groupName) {
+    if (!groupColors[groupName]) {
+        const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        groupColors[groupName] = randomColor;
+    }
+    return groupColors[groupName];
+}
+
+function renderGraph() {
+    const graphContainer = document.getElementById("graphContainer");
+    graphContainer.innerHTML = "";
+
+    const ideas = getIdeas();
+
+    const grouped = {};
+
+    ideas.forEach(idea => {
+        const group = idea.group || "no group";
+
+        if (!grouped[group]) {
+            grouped[group] = [];
+        }
+
+        grouped[group].push(idea.name);
+    });
+
+    for (const groupName in grouped) {
+        const groupBox = document.createElement("div");
+        groupBox.classList.add("group-box");
+
+        const color = getGroupColor(groupName);
+        groupBox.style.backgroundColor = color;
+
+        const title = document.createElement("div");
+        title.classList.add("group-title");
+        title.textContent = groupName;
+
+        groupBox.appendChild(title);
+
+        grouped[groupName].forEach(ideaName => {
+            const node = document.createElement("div");
+            node.classList.add("idea-node");
+            node.textContent = ideaName;
+            groupBox.appendChild(node);
+        });
+
+        graphContainer.appendChild(groupBox);
+    }
+}
+
+function addIdea(value = "", group = "no group") {
+    const ideaList = document.getElementById("ideaList");
+
+    const id = ideaCounter++;
+
+    const wrapper = document.createElement("div");
+    wrapper.classList.add("idea-item");
+    wrapper.dataset.id = id;
+
+    wrapper.connections = new Set();
+
+    // IDEA NAME
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = value;
+    input.placeholder = "Enter main idea...";
+    input.classList.add("idea-name");
+    input.addEventListener("input", () => {
+        wrapper.dataset.ideaName = input.value.trim();
+    });
+
+    // GROUP LABEL
+    const groupLabel = document.createElement("div");
+    groupLabel.textContent = "Group:";
+    groupLabel.classList.add("group-label");
+    const groupInput = document.createElement("input");
+    groupInput.type = "text";
+    groupInput.value = group;
+    groupInput.classList.add("group-input");
+    let committedGroup = group || "no group";
+
+    // SAVE BUTTON (hidden initially)
+    const saveBtn = document.createElement("button");
+    saveBtn.textContent = "Save";
+    saveBtn.classList.add("group-save-btn");
+    saveBtn.style.display = "none";
+
+    // When user starts typing show Save button
+    groupInput.addEventListener("input", () => {
+        if (groupInput.value.trim() !== committedGroup) {
+            saveBtn.style.display = "inline-block";
+        } else {
+            saveBtn.style.display = "none";
+        }
+    });
+
+    // Save commits change
+    saveBtn.addEventListener("click", () => {
+        const newValue = groupInput.value.trim() || "no group";
+
+        committedGroup = newValue;
+        groupInput.value = newValue;
+
+        saveBtn.style.display = "none";
+
+        renderGraph(); // only update here
+    });
+
+    // Fallback on blur
+    groupInput.addEventListener("blur", () => {
+        if (!groupInput.value.trim()) {
+            groupInput.value = committedGroup;
+        }
+    });
+
+    // CONNECT BUTTON
+    const connectBtn = document.createElement("button");
+    connectBtn.textContent = "Connect";
+    connectBtn.classList.add("connect-btn");
+
+    wrapper.dataset.ideaName = value; // keep updated later
+
+    connectBtn.addEventListener("click", () => {
+        handleConnectClick(wrapper);
+    });
+
+    wrapper.appendChild(connectBtn);
+    // COLLAPSIBLE CONNECTIONS
+    const toggleConnections = document.createElement("div");
+    toggleConnections.textContent = "Connections";
+    const connectionList = document.createElement("div");
+    connectionList.classList.add("connection-list");
+
+    wrapper.getCommittedGroup = () => committedGroup;
+    wrapper.appendChild(input);
+    wrapper.appendChild(groupLabel);
+    wrapper.appendChild(groupInput);
+    wrapper.appendChild(connectBtn);
+    wrapper.appendChild(toggleConnections);
+    wrapper.appendChild(connectionList);
+    wrapper.appendChild(saveBtn);
+
+    ideaList.appendChild(wrapper);
+
+    input.addEventListener("input", renderGraph);
+    groupInput.addEventListener("input", renderGraph);
+}
+
+document.getElementById("addIdeaBtn").addEventListener("click", () => {
+    addIdea();
+    renderGraph();
+});
+/*
+Glue code
+*/
 function renderPage(data) {
     const output = document.getElementById("output");
     output.innerHTML = "";
@@ -608,6 +776,7 @@ function renderPage(data) {
     });
     const keywords = extractKeywordSuggestions(data);
     renderSuggestions(keywords);
+    renderGraph()
 }
 /*
 Final search handler
